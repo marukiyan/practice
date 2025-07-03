@@ -1,175 +1,162 @@
+import tkinter as tk
+from tkinter import filedialog, simpledialog
 import cv2
-import numpy as np
-import os
+from PIL import Image, ImageTk
 
+class ImageEditor:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Редактор изображений")
 
-def load_image(image_path):
-    """Загружает изображение из файла."""
-    if os.path.exists(image_path):
-        print(f"Файл найден: {image_path}")
-        img = cv2.imread(image_path)
-        if img is None:
-            print("Ошибка: Файл не является изображением или поврежден!")
-            return None
-        print(f"Изображение загружено. Размер: {img.shape}")
-        return img
-    else:
-        print("Ошибка: Файл не найден!")
-        return None
+        # Кнопки для различных операций
+        self.load_button = tk.Button(root, text="Загрузить изображение", command=self.load_image)
+        self.load_button.pack(pady=10)
 
+        self.capture_button = tk.Button(root, text="Сделать снимок с камеры", command=self.capture_from_camera)
+        self.capture_button.pack(pady=10)
 
-def capture_from_camera():
-    """Захват изображения с веб-камеры."""
-    cap = cv2.VideoCapture(0)
+        self.operations_button = tk.Button(root, text="Операции с изображениями", command=self.operations)
+        self.operations_button.pack(pady=10)
 
-    if not cap.isOpened():
-        print("Ошибка: Не удалось подключиться к веб-камере.")
-        print("Проверьте, подключена ли камера, а также попробуйте закрыть другие приложения, использующие камеру.")
-        return None
+        self.quit_button = tk.Button(root, text="Выход", command=root.quit)
+        self.quit_button.pack(pady=10)
 
-    print("Нажмите 's', чтобы сделать снимок.")
-    while True:
+        # Место для отображения изображения
+        self.image_label = tk.Label(root)
+        self.image_label.pack(padx=10, pady=10)
+
+        self.image = None  # Переменная для хранения изображения
+
+    def load_image(self):
+        """Загружаем изображение через диалоговое окно"""
+        file_path = filedialog.askopenfilename(filetypes=[("Image Files", "*.png;*.jpg;*.jpeg")])
+        if file_path:
+            self.image = cv2.imread(file_path)
+            self.display_image(self.image)
+
+    def capture_from_camera(self):
+        """Снимок с камеры"""
+        cap = cv2.VideoCapture(0)
+        if not cap.isOpened():
+            print("Ошибка: Не удалось подключиться к веб-камере.")
+            return
+
         ret, frame = cap.read()
-        if not ret:
-            print("Ошибка: Не удалось захватить изображение с веб-камеры.")
-            break
+        if ret:
+            cv2.imwrite("captured_image.jpg", frame)
+            self.image = cv2.imread("captured_image.jpg")
+            self.display_image(self.image)
+        cap.release()
 
-        cv2.imshow('WebCam - Press "s" to capture', frame)
+    def operations(self):
+        """Операции с изображением"""
+        if self.image is not None:
+            # Показать окно для операций
+            operations_window = tk.Toplevel(self.root)
+            operations_window.title("Доступные операции")
 
-        # Нажатие клавиши 's' для сохранения изображения
-        if cv2.waitKey(1) & 0xFF == ord('s'):
-            cv2.imwrite('captured_image.jpg', frame)
-            print("Снимок сохранен как 'captured_image.jpg'.")
-            break
+            # Кнопки для операций
+            rotate_button = tk.Button(operations_window, text="Повернуть", command=self.ask_rotate)
+            rotate_button.pack(pady=10)
 
-    cap.release()
-    cv2.destroyAllWindows()
-    return cv2.imread('captured_image.jpg')  # Возвращаем сохранённое изображение
+            crop_button = tk.Button(operations_window, text="Обрезать", command=self.ask_crop)
+            crop_button.pack(pady=10)
 
+            rectangle_button = tk.Button(operations_window, text="Прямоугольник", command=self.ask_rectangle)
+            rectangle_button.pack(pady=10)
 
-def show_image(image, window_name="Изображение"):
-    """Отображает изображение в окне."""
-    if image is not None:
-        cv2.imshow(window_name, image)
-        cv2.waitKey(0)  # Ожидает, пока не нажмете клавишу, чтобы закрыть окно
-        cv2.destroyAllWindows()
-    else:
-        print("Ошибка: Изображение не загружено.")
+            red_channel_button = tk.Button(operations_window, text="Красный канал", command=lambda: self.display_channel('red'))
+            red_channel_button.pack(pady=10)
 
+            green_channel_button = tk.Button(operations_window, text="Зеленый канал", command=lambda: self.display_channel('green'))
+            green_channel_button.pack(pady=10)
 
-def display_channel(image, channel):
-    """Показывает только выбранный канал (красный, зеленый или синий)."""
-    if channel == 'red':
-        channel_image = image[:, :, 2]  # Красный канал
-    elif channel == 'green':
-        channel_image = image[:, :, 1]  # Зеленый канал
-    elif channel == 'blue':
-        channel_image = image[:, :, 0]  # Синий канал
-    else:
-        print("Ошибка: Неверно выбран канал!")
-        return None
-    # Преобразуем канал в 3D для отображения в окне
-    channel_image_3d = cv2.merge([channel_image, channel_image, channel_image])
-    return channel_image_3d
+            blue_channel_button = tk.Button(operations_window, text="Синий канал", command=lambda: self.display_channel('blue'))
+            blue_channel_button.pack(pady=10)
 
+            back_button = tk.Button(operations_window, text="Назад", command=operations_window.destroy)
+            back_button.pack(pady=10)
 
-def crop_image(image, x, y, w, h):
-    """Обрезает изображение по заданным координатам."""
-    image_height, image_width = image.shape[:2]
-    if x + w > image_width or y + h > image_height:
-        print("Ошибка: Координаты обрезки выходят за пределы изображения.")
-        return None
-    return image[y:y + h, x:x + w]
+    def display_image(self, img):
+        """Отображает изображение в окне Tkinter"""
+        if img is not None:
+            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # Конвертация в RGB
+            img_pil = Image.fromarray(img_rgb)
+            img_tk = ImageTk.PhotoImage(img_pil)
 
-
-def draw_rectangle(image, x, y, w, h):
-    """Нарисовать прямоугольник синим цветом."""
-    return cv2.rectangle(image, (x, y), (x + w, y + h), (255, 0, 0), 2)  # Цвет синий (BGR)
-
-
-def rotate_image(image, angle):
-    """Вращает изображение на заданный угол."""
-    (h, w) = image.shape[:2]
-    center = (w // 2, h // 2)  # Центр изображения
-    matrix = cv2.getRotationMatrix2D(center, angle, 1.0)  # Получаем матрицу вращения
-    rotated_image = cv2.warpAffine(image, matrix, (w, h))  # Поворачиваем изображение
-    return rotated_image
-
-
-def process_image():
-    """Основной процесс, где будут использоваться функции."""
-    choice = input(
-        "Выберите способ загрузки изображения:\n1. Загрузить изображение с диска\n2. Сделать снимок с веб-камеры\nВведите 1 или 2: ")
-
-    if choice == '1':
-        image_path = input("Введите путь к изображению (формат png или jpg): ")
-        img = load_image(image_path)
-    elif choice == '2':
-        img = capture_from_camera()
-    else:
-        print("Ошибка: Неверный выбор!")
-        return
-
-    if img is None:
-        print("Программа завершена, так как изображение не удалось загрузить.")
-        return
-
-    # Отображаем оригинальное изображение
-    show_image(img, "Оригинальное изображение")
-
-    # Ввод от пользователя для выбора канала
-    while True:
-        channel = input("Введите канал для отображения (red, green, blue): ").lower()
-        if channel in ['red', 'green', 'blue']:
-            break
+            # Обновляем изображение в лейбле
+            self.image_label.config(image=img_tk)
+            self.image_label.image = img_tk
         else:
-            print("Ошибка: Неверный выбор канала! Попробуйте снова.")
+            print("Ошибка: Изображение не загружено.")
 
-    img_channel = display_channel(img, channel)
+    def ask_rotate(self):
+        """Запросить у пользователя угол для поворота"""
+        angle = simpledialog.askfloat("Поворот", "Введите угол поворота изображения:")
+        if angle is not None:
+            self.rotate_image(angle)
 
-    if img_channel is not None:
-        show_image(img_channel, f"Канал: {channel.capitalize()}")
+    def ask_crop(self):
+        """Запросить у пользователя координаты для обрезки"""
+        x = simpledialog.askinteger("Обрезка", "Введите координату x:")
+        y = simpledialog.askinteger("Обрезка", "Введите координату y:")
+        w = simpledialog.askinteger("Обрезка", "Введите ширину:")
+        h = simpledialog.askinteger("Обрезка", "Введите высоту:")
+        if x is not None and y is not None and w is not None and h is not None:
+            self.crop_image(x, y, w, h)
 
-    # Ввод для обрезки изображения
-    while True:
-        action = input("Выберите действие: (1) Обрезать, (2) Нарисовать прямоугольник, (3) Вращение: ")
-        if action == "1":
-            try:
-                x = int(input("Введите координату x: "))
-                y = int(input("Введите координату y: "))
-                w = int(input("Введите ширину: "))
-                h = int(input("Введите высоту: "))
-                img_cropped = crop_image(img, x, y, w, h)
-                if img_cropped is not None:
-                    show_image(img_cropped, "Обрезанное изображение")
-                break
-            except ValueError:
-                print("Ошибка: Пожалуйста, вводите только числа.")
-        elif action == "2":
-            try:
-                x = int(input("Введите координату x прямоугольника: "))
-                y = int(input("Введите координату y прямоугольника: "))
-                w = int(input("Введите ширину прямоугольника: "))
-                h = int(input("Введите высоту прямоугольника: "))
-                img_with_rectangle = draw_rectangle(img, x, y, w, h)
-                show_image(img_with_rectangle, "Изображение с прямоугольником")
-                break
-            except ValueError:
-                print("Ошибка: Пожалуйста, вводите только числа.")
-        elif action == "3":
-            try:
-                angle = float(input("Введите угол вращения: "))
-                img_rotated = rotate_image(img, angle)
-                show_image(img_rotated, "Вращённое изображение")
-                break
-            except ValueError:
-                print("Ошибка: Пожалуйста, введите корректное число для угла.")
-        else:
-            print("Ошибка: Неверный выбор действия! Попробуйте снова.")
+    def ask_rectangle(self):
+        """Запросить у пользователя координаты для прямоугольника"""
+        x = simpledialog.askinteger("Прямоугольник", "Введите координату x:")
+        y = simpledialog.askinteger("Прямоугольник", "Введите координату y:")
+        w = simpledialog.askinteger("Прямоугольник", "Введите ширину:")
+        h = simpledialog.askinteger("Прямоугольник", "Введите высоту:")
+        if x is not None and y is not None and w is not None and h is not None:
+            self.draw_rectangle(x, y, w, h)
 
+    def rotate_image(self, angle):
+        """Поворот изображения"""
+        if self.image is not None:
+            (h, w) = self.image.shape[:2]
+            center = (w // 2, h // 2)
+            matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
+            rotated_image = cv2.warpAffine(self.image, matrix, (w, h))
+            self.display_image(rotated_image)
 
-# Запуск процесса
-process_image()
+    def crop_image(self, x, y, w, h):
+        """Обрезка изображения"""
+        if self.image is not None:
+            cropped_image = self.image[y:y+h, x:x+w]
+            self.display_image(cropped_image)
+
+    def draw_rectangle(self, x, y, w, h):
+        """Рисование прямоугольника"""
+        if self.image is not None:
+            img_with_rectangle = cv2.rectangle(self.image.copy(), (x, y), (x+w, y+h), (255, 0, 0), 3)
+            self.display_image(img_with_rectangle)
+
+    def display_channel(self, channel):
+        """Показывает выбранный канал (красный, зеленый, синий)"""
+        if self.image is not None:
+            if channel == 'red':
+                channel_image = self.image[:, :, 2]  # Красный канал
+            elif channel == 'green':
+                channel_image = self.image[:, :, 1]  # Зеленый канал
+            elif channel == 'blue':
+                channel_image = self.image[:, :, 0]  # Синий канал
+            else:
+                print("Ошибка: Неверно выбран канал!")
+                return
+            # Преобразуем канал в 3D для отображения в окне
+            channel_image_3d = cv2.merge([channel_image, channel_image, channel_image])
+            self.display_image(channel_image_3d)
+
+# Основная программа
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = ImageEditor(root)
+    root.mainloop()
+
 
 
 
